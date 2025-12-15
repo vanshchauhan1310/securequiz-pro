@@ -1,16 +1,16 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
 
 export const Navbar = () => {
-  const location = useLocation();
+  const { isAuthenticated, logout } = useAuth();
+  const navigate = useNavigate();
 
-  const links = [
-    { href: "/", label: "Home" },
-    { href: "/dashboard", label: "Dashboard" },
-    { href: "/quiz", label: "Take Quiz" },
-  ];
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
 
   return (
     <motion.nav
@@ -23,35 +23,22 @@ export const Navbar = () => {
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
             <span className="text-primary-foreground font-bold text-sm">Q</span>
           </div>
-          <span className="font-bold text-xl text-foreground">Quizify</span>
+          <span className="font-bold text-xl text-foreground">SecureQuiz Pro</span>
         </Link>
 
-        <div className="hidden md:flex items-center gap-1">
-          {links.map((link) => (
-            <Link
-              key={link.href}
-              to={link.href}
-              className={cn(
-                "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                location.pathname === link.href
-                  ? "bg-secondary text-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-              )}
-            >
-              {link.label}
-            </Link>
-          ))}
-        </div>
-
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/login">Sign In</Link>
-          </Button>
-          <Button size="sm" asChild>
-            <Link to="/dashboard">Get Started</Link>
-          </Button>
+          {isAuthenticated ? (
+            <Button variant="ghost" size="sm" onClick={handleLogout}>
+              Logout
+            </Button>
+          ) : (
+            <Button variant="hero" size="sm" asChild>
+              <Link to="/login">Login</Link>
+            </Button>
+          )}
         </div>
       </div>
     </motion.nav>
   );
 };
+

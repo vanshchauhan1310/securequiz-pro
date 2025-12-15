@@ -9,66 +9,45 @@ import { SecurityIndicator } from "@/components/quiz/SecurityIndicator";
 import { useTimer } from "@/hooks/useTimer";
 import { useSecurityMonitor } from "@/hooks/useSecurityMonitor";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Send, AlertTriangle, CheckCircle2 } from "lucide-react";
-import { Link } from "react-router-dom";
-
-const sampleQuestions = [
-  {
-    id: 1,
-    question: "What is the correct syntax for referring to an external script called 'app.js'?",
-    options: [
-      "<script href='app.js'>",
-      "<script name='app.js'>",
-      "<script src='app.js'>",
-      "<script file='app.js'>",
-    ],
-    correctAnswer: 2,
-  },
-  {
-    id: 2,
-    question: "How do you create a function in JavaScript?",
-    options: [
-      "function = myFunction()",
-      "function myFunction()",
-      "function:myFunction()",
-      "create myFunction()",
-    ],
-    correctAnswer: 1,
-  },
-  {
-    id: 3,
-    question: "How do you call a function named 'myFunction'?",
-    options: [
-      "call function myFunction()",
-      "call myFunction()",
-      "myFunction()",
-      "execute myFunction()",
-    ],
-    correctAnswer: 2,
-  },
-  {
-    id: 4,
-    question: "Which operator is used to assign a value to a variable?",
-    options: ["*", "-", "=", "x"],
-    correctAnswer: 2,
-  },
-  {
-    id: 5,
-    question: "What will the following code return: Boolean(10 > 9)?",
-    options: ["NaN", "false", "true", "undefined"],
-    correctAnswer: 2,
-  },
-];
+import { ArrowLeft, ArrowRight, Send, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
+import { useQuery } from "@tanstack/react-query";
+import { quizService } from "@/services/quizService";
+import { Question } from "@/lib/supabase";
+import { attemptService } from "@/services/attemptService";
+import { supabase } from "@/lib/supabase";
 
 const TakeQuiz = () => {
+  const [searchParams] = useSearchParams();
+  const quizId = searchParams.get('id') || ''; // Get quiz ID from URL parameter
+
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState<Map<number, number>>(new Map());
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [quizStarted, setQuizStarted] = useState(false);
+  const [attemptId, setAttemptId] = useState<string | null>(null);
+  const { user } = useAuth();
+
+  // Fetch quiz details
+  const { data: quiz, isLoading: quizLoading } = useQuery({
+    queryKey: ['quiz', quizId],
+    queryFn: () => quizService.getQuizById(quizId),
+    enabled: !!quizId,
+  });
+
+  // Fetch questions for the quiz
+  const { data: questions, isLoading: questionsLoading } = useQuery({
+    queryKey: ['quiz-questions', quizId],
+    queryFn: () => quizService.getQuizQuestions(quizId),
+    enabled: !!quizId,
+  });
+
+  const isLoading = quizLoading || questionsLoading;
 
   const timer = useTimer({
-    initialTime: 600, // 10 minutes
+    initialTime: quiz?.time_limit || 600, // Use quiz time limit or default to 10 minutes
     onTimeUp: () => {
       toast.error("Time's up! Your quiz has been automatically submitted.");
       handleSubmit();
@@ -91,47 +70,172 @@ const TakeQuiz = () => {
     },
   });
 
-  const handleStartQuiz = () => {
-    setQuizStarted(true);
-    timer.start();
-    security.startMonitoring();
+  const handleStartQuiz = async () => {
+    if (!quizId || !questions || !user) return;
+
+    // Request fullscreen immediately on user interaction
+    try {
+      if (document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch (err) {
+      console.error("Fullscreen request failed", err);
+      // Continue anyway, but maybe warn user
+      toast.warning("Could not enter fullscreen mode. Please enable it manually if required.");
+    }
+
+    try {
+      // Check if participant record exists for this user, if not create one
+      // We can just use the user.id for linking in quiz_attempts
+
+      // Create attempt
+      // We need to update attemptService to accept user_id instead of participant_id or handle both
+      // For now, let's assume we link to user_id in the new schema
+
+      // Since attemptService expects participantId, let's fetch or create a participant record for this user
+      let participantId = user.id; // Fallback
+
+      // Try to find participant by email
+      const { data: existingParticipant } = await supabase
+        .from('participants')
+        .select('id')
+        .eq('email', user.email)
+        .single();
+
+      if (existingParticipant) {
+        participantId = existingParticipant.id;
+      } else {
+        // Create participant linked to user
+        const { data: newParticipant, error: pError } = await supabase
+          .from('participants')
+          .insert([{
+            name: user.email.split('@')[0],
+            email: user.email,
+            user_id: user.id
+          }])
+          .select()
+          .single();
+
+        if (!pError && newParticipant) {
+          participantId = newParticipant.id;
+        }
+      }
+
+      const attempt = await attemptService.createAttempt(quizId, participantId, questions.length);
+      setAttemptId(attempt.id);
+
+      // Log activity
+      await attemptService.logActivity(user.email, 'started', quiz?.title || 'Quiz', quizId);
+
+      setQuizStarted(true);
+      timer.start();
+      security.startMonitoring();
+    } catch (error) {
+      console.error('Error starting quiz:', error);
+      toast.error("Failed to start quiz. Please try again.");
+    }
   };
 
   const handleSelectAnswer = (answerIndex: number) => {
     setAnswers(new Map(answers.set(currentQuestion, answerIndex)));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (!questions || !attemptId) return;
+
     timer.pause();
     security.stopMonitoring();
     setIsSubmitted(true);
     setShowResults(true);
 
     let correct = 0;
+    const answerPromises: Promise<any>[] = [];
+
     answers.forEach((answer, questionIndex) => {
-      if (sampleQuestions[questionIndex].correctAnswer === answer) {
-        correct++;
-      }
+      const isCorrect = questions[questionIndex].correct_answer === answer;
+      if (isCorrect) correct++;
+
+      // Save answer
+      answerPromises.push(
+        attemptService.submitAnswer(
+          attemptId,
+          questions[questionIndex].id,
+          answer,
+          isCorrect
+        )
+      );
     });
 
-    toast.success("Quiz submitted successfully!", {
-      description: `You scored ${correct}/${sampleQuestions.length} (${Math.round(
-        (correct / sampleQuestions.length) * 100
-      )}%)`,
-    });
+    try {
+      await Promise.all(answerPromises);
+      await attemptService.completeAttempt(attemptId, correct);
+
+      // Log completion
+      await attemptService.logActivity(
+        user?.email || 'User',
+        'completed',
+        quiz?.title || 'Quiz',
+        quizId,
+        Math.round((correct / questions.length) * 100)
+      );
+
+      toast.success("Quiz submitted successfully!");
+      // Don't show score in toast description
+    } catch (error) {
+      console.error('Error submitting quiz:', error);
+      toast.error("Failed to save results.");
+    }
   };
 
   const calculateScore = () => {
+    if (!questions) return { correct: 0, total: 0, percentage: 0 };
+
     let correct = 0;
     answers.forEach((answer, questionIndex) => {
-      if (sampleQuestions[questionIndex].correctAnswer === answer) {
+      if (questions[questionIndex].correct_answer === answer) {
         correct++;
       }
     });
-    return { correct, total: sampleQuestions.length, percentage: Math.round((correct / sampleQuestions.length) * 100) };
+    return { correct, total: questions.length, percentage: Math.round((correct / questions.length) * 100) };
   };
 
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading quiz...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state - no quiz ID or quiz not found
+  if (!quizId || !quiz || !questions || questions.length === 0) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card variant="glass" className="max-w-lg w-full">
+          <CardContent className="p-8 text-center">
+            <AlertTriangle className="h-16 w-16 text-warning mx-auto mb-4" />
+            <h1 className="text-2xl font-bold mb-2">Quiz Not Found</h1>
+            <p className="text-muted-foreground mb-6">
+              The quiz you're looking for doesn't exist or has no questions.
+            </p>
+            <Button variant="hero" asChild>
+              <Link to="/">← Back to Home</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (!quizStarted) {
+    const timeMinutes = Math.floor((quiz.time_limit || 600) / 60);
+    const timeSeconds = (quiz.time_limit || 600) % 60;
+    const formattedTime = timeSeconds > 0 ? `${timeMinutes}:${timeSeconds.toString().padStart(2, '0')}` : `${timeMinutes}:00`;
+
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <motion.div
@@ -144,18 +248,18 @@ const TakeQuiz = () => {
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center mx-auto mb-6">
                 <span className="text-3xl font-bold text-primary-foreground">Q</span>
               </div>
-              <h1 className="text-2xl font-bold mb-2">JavaScript Fundamentals</h1>
+              <h1 className="text-2xl font-bold mb-2">{quiz.title}</h1>
               <p className="text-muted-foreground mb-6">
-                Test your knowledge of JavaScript basics. This quiz contains 5 questions and has a 10-minute time limit.
+                {quiz.description || `This quiz contains ${questions.length} questions.`}
               </p>
 
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="p-4 rounded-xl bg-secondary/50 border border-border">
-                  <div className="text-2xl font-bold text-primary">5</div>
+                  <div className="text-2xl font-bold text-primary">{questions.length}</div>
                   <div className="text-sm text-muted-foreground">Questions</div>
                 </div>
                 <div className="p-4 rounded-xl bg-secondary/50 border border-border">
-                  <div className="text-2xl font-bold text-primary">10:00</div>
+                  <div className="text-2xl font-bold text-primary">{formattedTime}</div>
                   <div className="text-sm text-muted-foreground">Time Limit</div>
                 </div>
               </div>
@@ -182,7 +286,6 @@ const TakeQuiz = () => {
   }
 
   if (showResults) {
-    const score = calculateScore();
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <motion.div
@@ -192,52 +295,17 @@ const TakeQuiz = () => {
         >
           <Card variant="glass">
             <CardContent className="p-8 text-center">
-              <div
-                className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${
-                  score.percentage >= 70 ? "bg-success/20" : "bg-destructive/20"
-                }`}
-              >
-                <CheckCircle2
-                  className={`h-10 w-10 ${
-                    score.percentage >= 70 ? "text-success" : "text-destructive"
-                  }`}
-                />
+              <div className="w-20 h-20 rounded-full bg-success/20 flex items-center justify-center mx-auto mb-6">
+                <CheckCircle2 className="h-10 w-10 text-success" />
               </div>
-              <h1 className="text-3xl font-bold mb-2">Quiz Complete!</h1>
-              <p className="text-muted-foreground mb-6">Here's how you performed</p>
-
-              <div className="text-6xl font-bold text-gradient mb-2">{score.percentage}%</div>
-              <p className="text-lg text-muted-foreground mb-6">
-                {score.correct} out of {score.total} correct
+              <h2 className="text-3xl font-bold mb-4">Quiz Completed!</h2>
+              <p className="text-muted-foreground mb-8">
+                Thank you for attempting the quiz. Your responses have been recorded successfully.
               </p>
 
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                <div className="p-4 rounded-xl bg-secondary/50 border border-border">
-                  <div className="text-xl font-bold text-foreground">{score.correct}</div>
-                  <div className="text-xs text-muted-foreground">Correct</div>
-                </div>
-                <div className="p-4 rounded-xl bg-secondary/50 border border-border">
-                  <div className="text-xl font-bold text-foreground">
-                    {score.total - score.correct}
-                  </div>
-                  <div className="text-xs text-muted-foreground">Incorrect</div>
-                </div>
-                <div className="p-4 rounded-xl bg-secondary/50 border border-border">
-                  <div className="text-xl font-bold text-foreground">
-                    {security.violationCount}
-                  </div>
-                  <div className="text-xs text-muted-foreground">Warnings</div>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <Button variant="outline" className="flex-1" asChild>
-                  <Link to="/">Back to Home</Link>
-                </Button>
-                <Button variant="hero" className="flex-1" asChild>
-                  <Link to="/dashboard">View Dashboard</Link>
-                </Button>
-              </div>
+              <Button variant="hero" size="lg" asChild className="w-full">
+                <Link to="/">Return to Home</Link>
+              </Button>
             </CardContent>
           </Card>
         </motion.div>
@@ -255,7 +323,7 @@ const TakeQuiz = () => {
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
                 <span className="text-primary-foreground font-bold text-sm">Q</span>
               </div>
-              <span className="font-bold text-lg hidden sm:inline">JavaScript Quiz</span>
+              <span className="font-bold text-lg hidden sm:inline">{quiz?.title || 'Quiz'}</span>
             </div>
           </div>
 
@@ -285,8 +353,8 @@ const TakeQuiz = () => {
                 <QuestionCard
                   key={currentQuestion}
                   questionNumber={currentQuestion + 1}
-                  question={sampleQuestions[currentQuestion].question}
-                  options={sampleQuestions[currentQuestion].options}
+                  question={questions[currentQuestion].question_text}
+                  options={questions[currentQuestion].options as string[]}
                   selectedAnswer={answers.get(currentQuestion) ?? null}
                   onSelectAnswer={handleSelectAnswer}
                 />
@@ -303,11 +371,11 @@ const TakeQuiz = () => {
                   Previous
                 </Button>
 
-                {currentQuestion === sampleQuestions.length - 1 ? (
+                {currentQuestion === questions.length - 1 ? (
                   <Button
                     variant="hero"
                     onClick={handleSubmit}
-                    disabled={answers.size < sampleQuestions.length}
+                    disabled={answers.size < questions.length}
                   >
                     <Send className="h-4 w-4 mr-2" />
                     Submit Quiz
@@ -316,7 +384,7 @@ const TakeQuiz = () => {
                   <Button
                     onClick={() =>
                       setCurrentQuestion((prev) =>
-                        Math.min(sampleQuestions.length - 1, prev + 1)
+                        Math.min(questions.length - 1, prev + 1)
                       )
                     }
                   >
@@ -331,7 +399,7 @@ const TakeQuiz = () => {
           {/* Sidebar */}
           <div className="space-y-4">
             <QuestionNavigator
-              totalQuestions={sampleQuestions.length}
+              totalQuestions={questions.length}
               currentQuestion={currentQuestion}
               answeredQuestions={new Set(answers.keys())}
               onNavigate={setCurrentQuestion}
@@ -345,12 +413,12 @@ const TakeQuiz = () => {
                     className="h-full bg-primary rounded-full"
                     initial={{ width: 0 }}
                     animate={{
-                      width: `${(answers.size / sampleQuestions.length) * 100}%`,
+                      width: `${(answers.size / questions.length) * 100}%`,
                     }}
                   />
                 </div>
                 <span className="text-sm font-medium">
-                  {answers.size}/{sampleQuestions.length}
+                  {answers.size}/{questions.length}
                 </span>
               </div>
             </Card>

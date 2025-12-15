@@ -4,6 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Navbar } from "@/components/layout/Navbar";
+import { useQuery } from "@tanstack/react-query";
+import { analyticsService } from "@/services/analyticsService";
+import { quizService } from "@/services/quizService";
 import {
   Shield,
   Clock,
@@ -49,14 +52,14 @@ const features = [
   },
 ];
 
-const stats = [
-  { value: "10M+", label: "Quizzes Taken" },
-  { value: "500K+", label: "Active Users" },
-  { value: "99.9%", label: "Uptime" },
-  { value: "4.9/5", label: "User Rating" },
-];
-
 const Index = () => {
+  // Fetch global stats dynamically
+  const { data: stats } = useQuery({
+    queryKey: ['global-stats'],
+    queryFn: analyticsService.getGlobalStats,
+  });
+
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -91,17 +94,7 @@ const Index = () => {
               Real-time monitoring, smart timing, and instant analytics.
             </p>
 
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Button size="xl" variant="hero" asChild>
-                <Link to="/dashboard">
-                  Start Creating
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </Link>
-              </Button>
-              <Button size="xl" variant="outline" asChild>
-                <Link to="/quiz">Try Demo Quiz</Link>
-              </Button>
-            </div>
+            {/* Buttons removed as requested */}
           </motion.div>
 
           {/* Stats */}
@@ -111,7 +104,7 @@ const Index = () => {
             transition={{ duration: 0.8, delay: 0.3 }}
             className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-20 max-w-4xl mx-auto"
           >
-            {stats.map((stat, index) => (
+            {stats?.map((stat, index) => (
               <div
                 key={index}
                 className="text-center p-6 rounded-2xl bg-card/50 border border-border/50 backdrop-blur-sm"
@@ -181,7 +174,7 @@ const Index = () => {
           >
             <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-accent/20" />
             <div className="absolute inset-0 bg-card/80 backdrop-blur-xl" />
-            
+
             <div className="relative p-12 md:p-16 text-center">
               <h2 className="text-3xl md:text-5xl font-bold mb-4">
                 Ready to Transform Your Assessments?

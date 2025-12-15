@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/context/AuthContext";
 
 const menuItems = [
   {
@@ -40,6 +41,7 @@ const menuItems = [
 
 export const DashboardSidebar = () => {
   const location = useLocation();
+  const { user } = useAuth();
 
   return (
     <motion.aside
@@ -51,7 +53,7 @@ export const DashboardSidebar = () => {
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
           <span className="text-primary-foreground font-bold text-sm">Q</span>
         </div>
-        <span className="font-bold text-xl text-sidebar-foreground">Quizify</span>
+        <span className="font-bold text-xl text-sidebar-foreground">SecureQuiz Pro</span>
       </Link>
 
       <nav className="flex-1 space-y-6">
@@ -93,11 +95,15 @@ export const DashboardSidebar = () => {
       <div className="mt-auto pt-4 border-t border-sidebar-border">
         <div className="flex items-center gap-3 px-2">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-            <span className="text-primary-foreground font-semibold">JD</span>
+            <span className="text-primary-foreground font-semibold">
+              {user?.email?.charAt(0).toUpperCase() || "A"}
+            </span>
           </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-sidebar-foreground">John Doe</p>
-            <p className="text-xs text-muted-foreground">Admin</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-sidebar-foreground truncate">
+              {user?.email || "Admin"}
+            </p>
+            <p className="text-xs text-muted-foreground capitalize">{user?.role || "Admin"}</p>
           </div>
         </div>
       </div>

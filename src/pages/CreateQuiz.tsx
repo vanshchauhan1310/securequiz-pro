@@ -25,9 +25,11 @@ import {
   Eye,
   ArrowLeft,
   ArrowRight,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { quizService } from "@/services/quizService";
 
 interface Question {
   id: string;
@@ -38,11 +40,13 @@ interface Question {
 }
 
 const CreateQuiz = () => {
+  const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [quizTitle, setQuizTitle] = useState("");
   const [quizDescription, setQuizDescription] = useState("");
   const [timeLimit, setTimeLimit] = useState(30);
   const [securityEnabled, setSecurityEnabled] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([
     {
       id: "1",
@@ -86,17 +90,47 @@ const CreateQuiz = () => {
     );
   };
 
-  const handleSave = () => {
-    toast.success("Quiz saved successfully!", {
-      description: "Your quiz has been saved as a draft.",
-    });
+  const saveQuiz = async (status: 'draft' | 'active') => {
+    if (!quizTitle) {
+      toast.error("Please enter a quiz title");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      // 1. Create Quiz
+      const quiz = await quizService.createQuiz({
+        title: quizTitle,
+        description: quizDescription,
+        time_limit: timeLimit * 60, // Convert to seconds
+        status: status,
+      });
+
+      // 2. Create Questions
+      await Promise.all(
+        questions.map((q, index) =>
+          quizService.addQuestion({
+            quiz_id: quiz.id,
+            question_text: q.question,
+            options: q.options,
+            correct_answer: q.correctAnswer,
+            order: index + 1,
+          })
+        )
+      );
+
+      toast.success(`Quiz ${status === 'active' ? 'published' : 'saved'} successfully!`);
+      navigate('/dashboard');
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to save quiz. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handlePublish = () => {
-    toast.success("Quiz published!", {
-      description: "Your quiz is now live and ready for participants.",
-    });
-  };
+  const handleSave = () => saveQuiz('draft');
+  const handlePublish = () => saveQuiz('active');
 
   return (
     <DashboardLayout>
@@ -115,11 +149,12 @@ const CreateQuiz = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={handleSave}>
-              <Save className="h-4 w-4 mr-2" />
+            <Button variant="outline" onClick={handleSave} disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
               Save Draft
             </Button>
-            <Button variant="hero" onClick={handlePublish}>
+            <Button variant="hero" onClick={handlePublish} disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Publish Quiz
             </Button>
           </div>
@@ -131,13 +166,12 @@ const CreateQuiz = () => {
             <button
               key={s}
               onClick={() => setStep(s)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                step === s
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${step === s
                   ? "bg-primary text-primary-foreground"
                   : step > s
-                  ? "bg-success/10 text-success"
-                  : "bg-secondary text-muted-foreground"
-              }`}
+                    ? "bg-success/10 text-success"
+                    : "bg-secondary text-muted-foreground"
+                }`}
             >
               <span className="w-6 h-6 rounded-full bg-current/20 flex items-center justify-center text-sm font-semibold">
                 {s}
@@ -385,13 +419,8 @@ const CreateQuiz = () => {
                       Back
                     </Button>
                     <div className="flex gap-2">
-                      <Button variant="outline" asChild>
-                        <Link to="/quiz">
-                          <Eye className="h-4 w-4 mr-2" />
-                          Preview
-                        </Link>
-                      </Button>
-                      <Button variant="hero" onClick={handlePublish}>
+                      <Button variant="hero" onClick={handlePublish} disabled={isSubmitting}>
+                        {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                         Publish Quiz
                       </Button>
                     </div>

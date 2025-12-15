@@ -8,28 +8,73 @@ import Dashboard from "./pages/Dashboard";
 import CreateQuiz from "./pages/CreateQuiz";
 import TakeQuiz from "./pages/TakeQuiz";
 import NotFound from "./pages/NotFound";
+import Quizzes from "./pages/Quizzes";
+import Login from "./pages/Login";
+import Participants from "./pages/Participants";
+import { AuthProvider } from "@/context/AuthContext";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/dashboard/create" element={<CreateQuiz />} />
-          <Route path="/dashboard/quizzes" element={<Dashboard />} />
-          <Route path="/dashboard/analytics" element={<Dashboard />} />
-          <Route path="/dashboard/participants" element={<Dashboard />} />
-          <Route path="/dashboard/notifications" element={<Dashboard />} />
-          <Route path="/dashboard/settings" element={<Dashboard />} />
-          <Route path="/quiz" element={<TakeQuiz />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      <AuthProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/" element={<Index />} />
+
+            {/* Admin Routes */}
+            <Route path="/dashboard" element={
+              <ProtectedRoute requireAdmin>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/dashboard/create" element={
+              <ProtectedRoute requireAdmin>
+                <CreateQuiz />
+              </ProtectedRoute>
+            } />
+            <Route path="/dashboard/quizzes" element={
+              <ProtectedRoute requireAdmin>
+                <Quizzes />
+              </ProtectedRoute>
+            } />
+            <Route path="/dashboard/analytics" element={
+              <ProtectedRoute requireAdmin>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/dashboard/participants" element={
+              <ProtectedRoute requireAdmin>
+                <Participants />
+              </ProtectedRoute>
+            } />
+            <Route path="/dashboard/notifications" element={
+              <ProtectedRoute requireAdmin>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/dashboard/settings" element={
+              <ProtectedRoute requireAdmin>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+
+            {/* Participant Routes */}
+            <Route path="/quiz" element={
+              <ProtectedRoute>
+                <TakeQuiz />
+              </ProtectedRoute>
+            } />
+
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

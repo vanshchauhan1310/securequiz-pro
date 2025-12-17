@@ -54,3 +54,22 @@ Use the following credentials to log in as the administrator:
 4. Share the generated credentials with the participant.
 5. The participant can now log in and take the quiz.
 
+## 7. Email Configuration (Fix CORS Issues)
+
+To send emails (results, credentials), you must deploy the Supabase Edge Function:
+
+1.  **Install Supabase CLI** (if not installed).
+2.  **Login and Link**:
+    ```bash
+    npx supabase login
+    npx supabase link --project-ref spumhlickqzdhsdarkcc
+    ```
+3.  **Set Secrets**:
+    ```bash
+    npx supabase secrets set RESEND_API_KEY=your_resend_api_key
+    ```
+4.  **Deploy Function**:
+    ```bash
+    npx supabase functions deploy send-email
+    ```
+

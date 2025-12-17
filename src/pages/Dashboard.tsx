@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { analyticsService } from "@/services/analyticsService";
 import { quizService } from "@/services/quizService";
 import { authService } from "@/services/authService";
+import { useAuth } from "@/context/AuthContext";
 import {
   Dialog,
   DialogContent,
@@ -41,9 +42,14 @@ const iconMap = {
   "Total Participants": Users,
   "Avg. Completion Time": Clock,
   "Pass Rate": TrendingUp,
+  "Active Users": Users,
+  "Quizzes Taken": FileQuestion,
+  "Uptime": Clock,
+  "User Rating": TrendingUp,
 };
 
 const Dashboard = () => {
+  const { user } = useAuth();
   const [isParticipantDialogOpen, setIsParticipantDialogOpen] = useState(false);
   const [participantEmail, setParticipantEmail] = useState("");
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
@@ -52,20 +58,23 @@ const Dashboard = () => {
 
   // Fetch dashboard stats
   const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['dashboard-stats'],
-    queryFn: analyticsService.getDashboardStats,
+    queryKey: ['dashboard-stats', user?.id, user?.role],
+    queryFn: () => analyticsService.getDashboardStats(user?.role === 'admin' ? undefined : user?.id),
+    enabled: !!user,
   });
 
   // Fetch recent quizzes
   const { data: recentQuizzes, isLoading: quizzesLoading } = useQuery({
-    queryKey: ['recent-quizzes'],
-    queryFn: () => quizService.getRecentQuizzes(4),
+    queryKey: ['recent-quizzes', user?.id, user?.role],
+    queryFn: () => quizService.getRecentQuizzes(4, user?.role === 'admin' ? undefined : user?.id),
+    enabled: !!user,
   });
 
   // Fetch recent activity
   const { data: recentActivity, isLoading: activityLoading } = useQuery({
-    queryKey: ['recent-activity'],
-    queryFn: () => analyticsService.getRecentActivity(4),
+    queryKey: ['recent-activity', user?.id, user?.role],
+    queryFn: () => analyticsService.getRecentActivity(4, user?.role === 'admin' ? undefined : user?.id),
+    enabled: !!user,
   });
 
   const handleCreateParticipant = async (e: React.FormEvent) => {

@@ -10,7 +10,9 @@ import TakeQuiz from "./pages/TakeQuiz";
 import NotFound from "./pages/NotFound";
 import Quizzes from "./pages/Quizzes";
 import Login from "./pages/Login";
+import Signup from "./pages/Signup";
 import Participants from "./pages/Participants";
+import QuizResults from "./pages/QuizResults";
 import { AuthProvider } from "@/context/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
@@ -25,6 +27,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
             <Route path="/" element={<Index />} />
 
             {/* Admin Routes */}
@@ -53,12 +56,12 @@ const App = () => (
                 <Participants />
               </ProtectedRoute>
             } />
-            <Route path="/dashboard/notifications" element={
+            <Route path="/dashboard/results" element={
               <ProtectedRoute requireAdmin>
-                <Dashboard />
+                <QuizResults />
               </ProtectedRoute>
             } />
-            <Route path="/dashboard/settings" element={
+            <Route path="/dashboard/notifications" element={
               <ProtectedRoute requireAdmin>
                 <Dashboard />
               </ProtectedRoute>

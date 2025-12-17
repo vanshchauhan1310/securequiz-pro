@@ -2,22 +2,48 @@ import { supabase } from '@/lib/supabase';
 
 export const analyticsService = {
     // Get dashboard statistics
-    async getDashboardStats() {
+    async getDashboardStats(userId?: string) {
         // Total quizzes
-        const { count: totalQuizzes } = await supabase
+        let quizzesQuery = supabase
             .from('quizzes')
             .select('*', { count: 'exact', head: true });
 
-        // Total participants
-        const { count: totalParticipants } = await supabase
-            .from('participants')
-            .select('*', { count: 'exact', head: true });
+        if (userId) {
+            quizzesQuery = quizzesQuery.eq('creator_id', userId);
+        }
+
+        const { count: totalQuizzes } = await quizzesQuery;
+
+        // Total participants (unique participants who attempted user's quizzes)
+        let totalParticipants = 0;
+        if (userId) {
+            const { data: participantData } = await supabase
+                .from('quiz_attempts')
+                .select('participant_id, quizzes!inner(creator_id)')
+                .eq('quizzes.creator_id', userId);
+
+            if (participantData) {
+                const uniqueParticipants = new Set(participantData.map(p => p.participant_id));
+                totalParticipants = uniqueParticipants.size;
+            }
+        } else {
+            const { count } = await supabase
+                .from('participants')
+                .select('*', { count: 'exact', head: true });
+            totalParticipants = count || 0;
+        }
 
         // Average completion time (in seconds)
-        const { data: attempts } = await supabase
+        let attemptsQuery = supabase
             .from('quiz_attempts')
-            .select('started_at, completed_at')
+            .select('started_at, completed_at, quizzes!inner(creator_id)')
             .not('completed_at', 'is', null);
+
+        if (userId) {
+            attemptsQuery = attemptsQuery.eq('quizzes.creator_id', userId);
+        }
+
+        const { data: attempts } = await attemptsQuery;
 
         let avgCompletionTime = 0;
         if (attempts && attempts.length > 0) {
@@ -30,10 +56,16 @@ export const analyticsService = {
         }
 
         // Pass rate
-        const { data: completedAttempts } = await supabase
+        let completedAttemptsQuery = supabase
             .from('quiz_attempts')
-            .select('score, total_questions')
+            .select('score, total_questions, quizzes!inner(creator_id)')
             .not('score', 'is', null);
+
+        if (userId) {
+            completedAttemptsQuery = completedAttemptsQuery.eq('quizzes.creator_id', userId);
+        }
+
+        const { data: completedAttempts } = await completedAttemptsQuery;
 
         let passRate = 0;
         if (completedAttempts && completedAttempts.length > 0) {
@@ -47,15 +79,29 @@ export const analyticsService = {
         const oneWeekAgo = new Date();
         oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-        const { count: quizzesThisWeek } = await supabase
+        let quizzesThisWeekQuery = supabase
             .from('quizzes')
             .select('*', { count: 'exact', head: true })
             .gte('created_at', oneWeekAgo.toISOString());
 
-        const { count: participantsThisMonth } = await supabase
-            .from('participants')
-            .select('*', { count: 'exact', head: true })
-            .gte('created_at', new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString());
+        if (userId) {
+            quizzesThisWeekQuery = quizzesThisWeekQuery.eq('creator_id', userId);
+        }
+
+        const { count: quizzesThisWeek } = await quizzesThisWeekQuery;
+
+        // Participants change logic is complex with userId, simplifying for now or using same logic as total
+        // For simplicity, if userId is set, we might skip "change" or implement a simpler version
+        // Let's just use 0 for change if userId is set for now to avoid complex queries, or try to replicate logic
+
+        let participantsThisMonth = 0;
+        if (!userId) {
+            const { count } = await supabase
+                .from('participants')
+                .select('*', { count: 'exact', head: true })
+                .gte('created_at', new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString());
+            participantsThisMonth = count || 0;
+        }
 
         // Format completion time
         const minutes = Math.floor(avgCompletionTime / 60);
@@ -72,7 +118,7 @@ export const analyticsService = {
             {
                 title: 'Total Participants',
                 value: totalParticipants?.toString() || '0',
-                change: `+${participantsThisMonth || 0} this month`,
+                change: userId ? 'Based on your quizzes' : `+${participantsThisMonth || 0} this month`,
                 trend: 'up' as const,
             },
             {
@@ -91,12 +137,18 @@ export const analyticsService = {
     },
 
     // Get recent activity
-    async getRecentActivity(limit: number = 4) {
-        const { data, error } = await supabase
+    async getRecentActivity(limit: number = 4, userId?: string) {
+        let query = supabase
             .from('activities')
-            .select('*')
+            .select('*, quizzes!inner(creator_id)')
             .order('created_at', { ascending: false })
             .limit(limit);
+
+        if (userId) {
+            query = query.eq('quizzes.creator_id', userId);
+        }
+
+        const { data, error } = await query;
 
         if (error) throw error;
 
@@ -108,6 +160,36 @@ export const analyticsService = {
                 quiz: activity.quiz_title,
                 time: timeAgo,
                 score: activity.score,
+            };
+        });
+    },
+
+    // Get all activities (for results page)
+    async getAllActivities(userId?: string) {
+        let query = supabase
+            .from('activities')
+            .select('*, quizzes!inner(creator_id)')
+            .order('created_at', { ascending: false });
+
+        if (userId) {
+            query = query.eq('quizzes.creator_id', userId);
+        }
+
+        const { data, error } = await query;
+
+        if (error) throw error;
+
+        return data.map((activity) => {
+            const timeAgo = getTimeAgo(new Date(activity.created_at));
+            return {
+                id: activity.id,
+                user: activity.user_name,
+                email: activity.user_email || (activity.user_name && activity.user_name.includes('@') ? activity.user_name : ''),
+                action: activity.action,
+                quiz: activity.quiz_title,
+                time: timeAgo,
+                score: activity.score,
+                timestamp: activity.created_at,
             };
         });
     },

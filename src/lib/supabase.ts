@@ -26,7 +26,7 @@ export interface Question {
     quiz_id: string;
     question_text: string;
     options: string[];
-    correct_answer: number;
+    correct_answers: number[]; // Changed from correct_answer: number
     order: number;
     created_at: string;
 }
@@ -52,7 +52,7 @@ export interface Answer {
     id: string;
     attempt_id: string;
     question_id: string;
-    selected_answer: number;
+    selected_answers: number[]; // Changed from selected_answer: number
     is_correct: boolean;
     created_at: string;
 }

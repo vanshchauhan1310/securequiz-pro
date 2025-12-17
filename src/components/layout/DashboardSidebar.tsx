@@ -9,6 +9,8 @@ import {
   PlusCircle,
   List,
   Bell,
+  ClipboardList,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -27,21 +29,30 @@ const menuItems = [
     items: [
       { icon: PlusCircle, label: "Create Quiz", href: "/dashboard/create" },
       { icon: List, label: "My Quizzes", href: "/dashboard/quizzes" },
+      {
+        icon: ClipboardList,
+        label: "Quiz Results",
+        href: "/dashboard/results",
+      },
     ],
   },
   {
     title: "Management",
     items: [
       { icon: Users, label: "Participants", href: "/dashboard/participants" },
-      { icon: Bell, label: "Notifications", href: "/dashboard/notifications", badge: 3 },
-      { icon: Settings, label: "Settings", href: "/dashboard/settings" },
+      {
+        icon: Bell,
+        label: "Notifications",
+        href: "/dashboard/notifications",
+        badge: 3,
+      },
     ],
   },
 ];
 
 export const DashboardSidebar = () => {
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   return (
     <motion.aside
@@ -51,9 +62,11 @@ export const DashboardSidebar = () => {
     >
       <Link to="/" className="flex items-center gap-2 mb-8 px-2">
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-          <span className="text-primary-foreground font-bold text-sm">Q</span>
+          Q
         </div>
-        <span className="font-bold text-xl text-sidebar-foreground">SecureQuiz Pro</span>
+        <span className="font-bold text-xl text-sidebar-foreground">
+          Quizify
+        </span>
       </Link>
 
       <nav className="flex-1 space-y-6">
@@ -73,13 +86,21 @@ export const DashboardSidebar = () => {
                         "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all",
                         isActive
                           ? "bg-sidebar-accent text-sidebar-primary"
-                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
                       )}
                     >
-                      <item.icon className={cn("h-5 w-5", isActive && "text-sidebar-primary")} />
+                      <item.icon
+                        className={cn(
+                          "h-5 w-5",
+                          isActive && "text-sidebar-primary",
+                        )}
+                      />
                       <span className="flex-1">{item.label}</span>
                       {item.badge && (
-                        <Badge variant="glow" className="text-[10px] px-2 py-0.5">
+                        <Badge
+                          variant="glow"
+                          className="text-[10px] px-2 py-0.5"
+                        >
                           {item.badge}
                         </Badge>
                       )}
@@ -93,19 +114,30 @@ export const DashboardSidebar = () => {
       </nav>
 
       <div className="mt-auto pt-4 border-t border-sidebar-border">
-        <div className="flex items-center gap-3 px-2">
+        <div className="flex items-center gap-3 px-2 mb-3">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
             <span className="text-primary-foreground font-semibold">
-              {user?.email?.charAt(0).toUpperCase() || "A"}
+              {user?.name?.charAt(0).toUpperCase() ||
+                user?.email?.charAt(0).toUpperCase() ||
+                "A"}
             </span>
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-sidebar-foreground truncate">
-              {user?.email || "Admin"}
+              {user?.name || user?.email || "Admin"}
             </p>
-            <p className="text-xs text-muted-foreground capitalize">{user?.role || "Admin"}</p>
+            <p className="text-xs text-muted-foreground capitalize">
+              {user?.role || "Admin"}
+            </p>
           </div>
         </div>
+        <button
+          onClick={() => logout()}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+        >
+          <LogOut className="h-5 w-5" />
+          <span>Logout</span>
+        </button>
       </div>
     </motion.aside>
   );

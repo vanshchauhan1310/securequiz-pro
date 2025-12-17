@@ -26,20 +26,25 @@ import {
   ArrowLeft,
   ArrowRight,
   Loader2,
+  Upload,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
 import { quizService } from "@/services/quizService";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface Question {
   id: string;
   question: string;
   options: string[];
-  correctAnswer: number;
+  correctAnswers: number[];
   timeLimit: number;
 }
 
 const CreateQuiz = () => {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [quizTitle, setQuizTitle] = useState("");
@@ -52,7 +57,7 @@ const CreateQuiz = () => {
       id: "1",
       question: "",
       options: ["", "", "", ""],
-      correctAnswer: 0,
+      correctAnswers: [0],
       timeLimit: 60,
     },
   ]);
@@ -62,7 +67,7 @@ const CreateQuiz = () => {
       id: Date.now().toString(),
       question: "",
       options: ["", "", "", ""],
-      correctAnswer: 0,
+      correctAnswers: [0],
       timeLimit: 60,
     };
     setQuestions([...questions, newQuestion]);
@@ -80,6 +85,19 @@ const CreateQuiz = () => {
     );
   };
 
+  const toggleCorrectAnswer = (questionId: string, optionIndex: number) => {
+    setQuestions(questions.map(q => {
+      if (q.id === questionId) {
+        const currentAnswers = q.correctAnswers;
+        const newAnswers = currentAnswers.includes(optionIndex)
+          ? currentAnswers.filter(a => a !== optionIndex)
+          : [...currentAnswers, optionIndex];
+        return { ...q, correctAnswers: newAnswers.sort() };
+      }
+      return q;
+    }));
+  };
+
   const updateOption = (questionId: string, optionIndex: number, value: string) => {
     setQuestions(
       questions.map((q) =>
@@ -88,6 +106,111 @@ const CreateQuiz = () => {
           : q
       )
     );
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      // We can't use quizService.createQuestionsBulk directly here because we haven't created the quiz yet.
+      // We need to parse the CSV locally and add to state.
+      // Re-implementing simplified CSV parse here or we could extract the parser.
+      // Let's use a simplified parser here to populate state.
+      const text = await file.text();
+      const lines = text.split('\n');
+      const newQuestions: Question[] = [];
+
+      const startIdx = lines[0].toLowerCase().includes('question') ? 1 : 0;
+
+      // Regex to match CSV fields: quoted fields OR non-comma sequences
+      const csvRegex = /(?:^|,)(?:\s*"((?:[^"]|"")*)"\s*|([^,]*))/g;
+
+      for (let i = startIdx; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        const parts: string[] = [];
+        let match;
+        // Reset lastIndex because we are reusing the regex or it's global
+        csvRegex.lastIndex = 0;
+
+        while ((match = csvRegex.exec(line)) !== null) {
+          // match[1] is quoted content, match[2] is unquoted
+          let val = match[1] !== undefined ? match[1].replace(/""/g, '"') : match[2];
+          if (val !== undefined) {
+            parts.push(val.trim());
+          }
+          // Handle case where line ends with a comma (empty last field)
+          if (csvRegex.lastIndex === line.length && line.endsWith(',')) {
+            parts.push('');
+          }
+        }
+
+        // Remove trailing empty strings
+        while (parts.length > 0 && parts[parts.length - 1] === '') {
+          parts.pop();
+        }
+
+        // Filter out empty parts that might have been caused by regex matching empty strings between commas
+        // Actually the regex might match empty strings for consecutive commas
+        // Let's clean up the parts list
+        // const cleanParts = parts.filter((p, index) => p !== '' || index < parts.length - 1); // Keep empty only if it's a valid empty option? No, let's just use parts.
+
+        // Re-evaluate parts length
+        if (parts.length < 3) continue;
+
+        // STRICT LOGIC:
+        // Column 0: Question
+        // Column Last: Answer(s)
+        // Columns 1 to Last-1: Options
+
+        const questionText = parts[0];
+        const answerStr = parts[parts.length - 1];
+
+        // Options are everything in between.
+        // We filter out empty strings to allow for variable number of options, 
+        // but we ensure we have at least 2 options for a valid question usually, though 1 is technically possible in code.
+        const options = parts.slice(1, parts.length - 1).filter(o => o !== '');
+
+        const correctAnswers: number[] = [];
+        // Split answer string by comma, semicolon, pipe, or space if it looks like "A B" or "A,B" or "A;B"
+        // Since we handle quoted CSV fields now, "A,B" will come in as a single string "A,B"
+        const answerParts = answerStr.split(/[|;,\s&]+/);
+
+        answerParts.forEach(ans => {
+          const a = ans.trim().toUpperCase();
+          if (['A', 'B', 'C', 'D', 'E', 'F'].includes(a)) {
+            correctAnswers.push(a.charCodeAt(0) - 65);
+          } else if (!isNaN(Number(a)) && a !== '') {
+            correctAnswers.push(Number(a) - 1);
+          }
+        });
+
+        if (questionText && options.length > 0 && correctAnswers.length > 0) {
+          newQuestions.push({
+            id: Date.now().toString() + i,
+            question: questionText,
+            options: options.length < 4 ? [...options, ...Array(4 - options.length).fill("")] : options,
+            correctAnswers: correctAnswers,
+            timeLimit: 60,
+          });
+        }
+      }
+
+      if (newQuestions.length > 0) {
+        setQuestions([...questions, ...newQuestions]);
+        toast.success(`Added ${newQuestions.length} questions from CSV`);
+      } else {
+        toast.error("No valid questions found in CSV");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to parse CSV");
+    }
+
+    // Reset input
+    e.target.value = '';
   };
 
   const saveQuiz = async (status: 'draft' | 'active') => {
@@ -104,6 +227,7 @@ const CreateQuiz = () => {
         description: quizDescription,
         time_limit: timeLimit * 60, // Convert to seconds
         status: status,
+        creator_id: user?.id,
       });
 
       // 2. Create Questions
@@ -113,7 +237,7 @@ const CreateQuiz = () => {
             quiz_id: quiz.id,
             question_text: q.question,
             options: q.options,
-            correct_answer: q.correctAnswer,
+            correct_answers: q.correctAnswers, // Pass correctAnswers
             order: index + 1,
           })
         )
@@ -167,10 +291,10 @@ const CreateQuiz = () => {
               key={s}
               onClick={() => setStep(s)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${step === s
-                  ? "bg-primary text-primary-foreground"
-                  : step > s
-                    ? "bg-success/10 text-success"
-                    : "bg-secondary text-muted-foreground"
+                ? "bg-primary text-primary-foreground"
+                : step > s
+                  ? "bg-success/10 text-success"
+                  : "bg-secondary text-muted-foreground"
                 }`}
             >
               <span className="w-6 h-6 rounded-full bg-current/20 flex items-center justify-center text-sm font-semibold">
@@ -262,6 +386,37 @@ const CreateQuiz = () => {
               exit={{ opacity: 0, x: -20 }}
               className="space-y-4"
             >
+              <div className="flex justify-end mb-4 gap-2">
+                <Button variant="outline" onClick={() => {
+                  const csvContent = `Question,Option A,Option B,Option C,Option D,Correct Answer(s)
+What is 2+2?,3,4,5,6,B
+Select primary colors,Red,Green,Blue,Yellow,"A,C"
+"Question with comma, like this?",Yes,No,Maybe,Unknown,A`;
+                  const blob = new Blob([csvContent], { type: 'text/csv' });
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'questions_template.csv';
+                  a.click();
+                  window.URL.revokeObjectURL(url);
+                }}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Download Template
+                </Button>
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileUpload}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <Button variant="outline">
+                    <Upload className="h-4 w-4 mr-2" />
+                    Bulk Upload Questions (CSV)
+                  </Button>
+                </div>
+              </div>
+
               {questions.map((question, qIndex) => (
                 <Card key={question.id}>
                   <CardHeader className="flex flex-row items-center justify-between py-4">
@@ -294,7 +449,7 @@ const CreateQuiz = () => {
                         <div key={oIndex} className="space-y-2">
                           <div className="flex items-center gap-2">
                             <Label>Option {String.fromCharCode(65 + oIndex)}</Label>
-                            {question.correctAnswer === oIndex && (
+                            {question.correctAnswers.includes(oIndex) && (
                               <Badge variant="success" className="text-[10px]">
                                 Correct
                               </Badge>
@@ -310,14 +465,12 @@ const CreateQuiz = () => {
                             />
                             <Button
                               variant={
-                                question.correctAnswer === oIndex ? "success" : "outline"
+                                question.correctAnswers.includes(oIndex) ? "success" : "outline"
                               }
                               size="icon"
-                              onClick={() =>
-                                updateQuestion(question.id, "correctAnswer", oIndex)
-                              }
+                              onClick={() => toggleCorrectAnswer(question.id, oIndex)}
                             >
-                              ✓
+                              {question.correctAnswers.includes(oIndex) ? "✓" : ""}
                             </Button>
                           </div>
                         </div>

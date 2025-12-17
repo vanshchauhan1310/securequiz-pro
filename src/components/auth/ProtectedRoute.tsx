@@ -7,14 +7,15 @@ interface ProtectedRouteProps {
 }
 
 export const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRouteProps) => {
-    const { isAuthenticated, isAdmin } = useAuth();
+    const { isAuthenticated, user } = useAuth();
     const location = useLocation();
 
     if (!isAuthenticated) {
         return <Navigate to="/login" state={{ from: location }} replace />;
     }
 
-    if (requireAdmin && !isAdmin) {
+    // Allow both admin and faculty for "admin" routes (dashboard, etc.)
+    if (requireAdmin && user?.role !== 'admin' && user?.role !== 'faculty') {
         return <Navigate to="/" replace />;
     }
 

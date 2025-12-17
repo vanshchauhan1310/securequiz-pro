@@ -18,13 +18,13 @@ export const attemptService = {
     },
 
     // Submit an answer
-    async submitAnswer(attemptId: string, questionId: string, selectedAnswer: number, isCorrect: boolean) {
+    async submitAnswer(attemptId: string, questionId: string, selectedAnswers: number[], isCorrect: boolean) {
         const { data, error } = await supabase
             .from('answers')
             .insert([{
                 attempt_id: attemptId,
                 question_id: questionId,
-                selected_answer: selectedAnswer,
+                selected_answers: selectedAnswers,
                 is_correct: isCorrect,
             }])
             .select()

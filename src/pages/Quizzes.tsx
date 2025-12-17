@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { quizService } from "@/services/quizService";
+import { useAuth } from "@/context/AuthContext";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -27,11 +28,13 @@ import {
 } from "lucide-react";
 
 const Quizzes = () => {
+    const { user } = useAuth();
     const queryClient = useQueryClient();
 
     const { data: quizzes, isLoading } = useQuery({
-        queryKey: ['all-quizzes'],
-        queryFn: quizService.getQuizzesWithStats,
+        queryKey: ['all-quizzes', user?.id, user?.role],
+        queryFn: () => quizService.getQuizzesWithStats(user?.role === 'admin' ? undefined : user?.id),
+        enabled: !!user,
     });
 
     const updateStatusMutation = useMutation({

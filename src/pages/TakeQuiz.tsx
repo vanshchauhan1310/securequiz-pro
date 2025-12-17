@@ -9,7 +9,14 @@ import { SecurityIndicator } from "@/components/quiz/SecurityIndicator";
 import { useTimer } from "@/hooks/useTimer";
 import { useSecurityMonitor } from "@/hooks/useSecurityMonitor";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Send, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Send,
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+} from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
@@ -20,10 +27,10 @@ import { supabase } from "@/lib/supabase";
 
 const TakeQuiz = () => {
   const [searchParams] = useSearchParams();
-  const quizId = searchParams.get('id') || ''; // Get quiz ID from URL parameter
+  const quizId = searchParams.get("id") || ""; // Get quiz ID from URL parameter
 
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [answers, setAnswers] = useState<Map<number, number>>(new Map());
+  const [answers, setAnswers] = useState<Map<number, number[]>>(new Map());
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [quizStarted, setQuizStarted] = useState(false);
@@ -32,14 +39,14 @@ const TakeQuiz = () => {
 
   // Fetch quiz details
   const { data: quiz, isLoading: quizLoading } = useQuery({
-    queryKey: ['quiz', quizId],
+    queryKey: ["quiz", quizId],
     queryFn: () => quizService.getQuizById(quizId),
     enabled: !!quizId,
   });
 
   // Fetch questions for the quiz
   const { data: questions, isLoading: questionsLoading } = useQuery({
-    queryKey: ['quiz-questions', quizId],
+    queryKey: ["quiz-questions", quizId],
     queryFn: () => quizService.getQuizQuestions(quizId),
     enabled: !!quizId,
   });
@@ -81,7 +88,9 @@ const TakeQuiz = () => {
     } catch (err) {
       console.error("Fullscreen request failed", err);
       // Continue anyway, but maybe warn user
-      toast.warning("Could not enter fullscreen mode. Please enable it manually if required.");
+      toast.warning(
+        "Could not enter fullscreen mode. Please enable it manually if required.",
+      );
     }
 
     try {
@@ -97,9 +106,9 @@ const TakeQuiz = () => {
 
       // Try to find participant by email
       const { data: existingParticipant } = await supabase
-        .from('participants')
-        .select('id')
-        .eq('email', user.email)
+        .from("participants")
+        .select("id")
+        .eq("email", user.email)
         .single();
 
       if (existingParticipant) {
@@ -107,12 +116,14 @@ const TakeQuiz = () => {
       } else {
         // Create participant linked to user
         const { data: newParticipant, error: pError } = await supabase
-          .from('participants')
-          .insert([{
-            name: user.email.split('@')[0],
-            email: user.email,
-            user_id: user.id
-          }])
+          .from("participants")
+          .insert([
+            {
+              name: user.email.split("@")[0],
+              email: user.email,
+              user_id: user.id,
+            },
+          ])
           .select()
           .single();
 
@@ -121,23 +132,44 @@ const TakeQuiz = () => {
         }
       }
 
-      const attempt = await attemptService.createAttempt(quizId, participantId, questions.length);
+      const attempt = await attemptService.createAttempt(
+        quizId,
+        participantId,
+        questions.length,
+      );
       setAttemptId(attempt.id);
 
       // Log activity
-      await attemptService.logActivity(user.email, 'started', quiz?.title || 'Quiz', quizId);
+      await attemptService.logActivity(
+        user.email,
+        "started",
+        quiz?.title || "Quiz",
+        quizId,
+      );
 
       setQuizStarted(true);
       timer.start();
       security.startMonitoring();
     } catch (error) {
-      console.error('Error starting quiz:', error);
+      console.error("Error starting quiz:", error);
       toast.error("Failed to start quiz. Please try again.");
     }
   };
 
   const handleSelectAnswer = (answerIndex: number) => {
-    setAnswers(new Map(answers.set(currentQuestion, answerIndex)));
+    const currentAnswers = answers.get(currentQuestion) || [];
+    const newAnswers = currentAnswers.includes(answerIndex)
+      ? currentAnswers.filter((a) => a !== answerIndex)
+      : [...currentAnswers, answerIndex];
+
+    setAnswers(
+      new Map(
+        answers.set(
+          currentQuestion,
+          newAnswers.sort((a, b) => a - b),
+        ),
+      ),
+    );
   };
 
   const handleSubmit = async () => {
@@ -149,22 +181,34 @@ const TakeQuiz = () => {
     setShowResults(true);
 
     let correct = 0;
+    console.log("Submitting quiz with attempt ID:", attemptId);
     const answerPromises: Promise<any>[] = [];
 
-    answers.forEach((answer, questionIndex) => {
-      const isCorrect = questions[questionIndex].correct_answer === answer;
+    answers.forEach((selectedAnswers, questionIndex) => {
+      const question = questions[questionIndex];
+      // Check if selected answers match correct answers exactly
+      // Sort both arrays to ensure order doesn't matter
+      const correctAnswers =
+        question.correct_answers?.sort((a, b) => a - b) || [];
+      const userAnswers = selectedAnswers.sort((a, b) => a - b);
+
+      const isCorrect =
+        correctAnswers.length === userAnswers.length &&
+        correctAnswers.every((val, index) => val === userAnswers[index]);
+
       if (isCorrect) correct++;
 
       // Save answer
       answerPromises.push(
         attemptService.submitAnswer(
           attemptId,
-          questions[questionIndex].id,
-          answer,
-          isCorrect
-        )
+          question.id,
+          selectedAnswers, // Pass the array of selected answers
+          isCorrect,
+        ),
       );
     });
+    console.log("Answer promises:", answerPromises);
 
     try {
       await Promise.all(answerPromises);
@@ -172,17 +216,17 @@ const TakeQuiz = () => {
 
       // Log completion
       await attemptService.logActivity(
-        user?.email || 'User',
-        'completed',
-        quiz?.title || 'Quiz',
+        user?.email || "User",
+        "completed",
+        quiz?.title || "Quiz",
         quizId,
-        Math.round((correct / questions.length) * 100)
+        Math.round((correct / questions.length) * 100),
       );
 
       toast.success("Quiz submitted successfully!");
       // Don't show score in toast description
     } catch (error) {
-      console.error('Error submitting quiz:', error);
+      console.error("Error submitting quiz:", error);
       toast.error("Failed to save results.");
     }
   };
@@ -191,12 +235,25 @@ const TakeQuiz = () => {
     if (!questions) return { correct: 0, total: 0, percentage: 0 };
 
     let correct = 0;
-    answers.forEach((answer, questionIndex) => {
-      if (questions[questionIndex].correct_answer === answer) {
+    answers.forEach((selectedAnswers, questionIndex) => {
+      const question = questions[questionIndex];
+      const correctAnswers =
+        question.correct_answers?.sort((a, b) => a - b) || [];
+      const userAnswers = selectedAnswers.sort((a, b) => a - b);
+
+      const isCorrect =
+        correctAnswers.length === userAnswers.length &&
+        correctAnswers.every((val, index) => val === userAnswers[index]);
+
+      if (isCorrect) {
         correct++;
       }
     });
-    return { correct, total: questions.length, percentage: Math.round((correct / questions.length) * 100) };
+    return {
+      correct,
+      total: questions.length,
+      percentage: Math.round((correct / questions.length) * 100),
+    };
   };
 
   // Loading state
@@ -234,7 +291,10 @@ const TakeQuiz = () => {
   if (!quizStarted) {
     const timeMinutes = Math.floor((quiz.time_limit || 600) / 60);
     const timeSeconds = (quiz.time_limit || 600) % 60;
-    const formattedTime = timeSeconds > 0 ? `${timeMinutes}:${timeSeconds.toString().padStart(2, '0')}` : `${timeMinutes}:00`;
+    const formattedTime =
+      timeSeconds > 0
+        ? `${timeMinutes}:${timeSeconds.toString().padStart(2, "0")}`
+        : `${timeMinutes}:00`;
 
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -246,32 +306,47 @@ const TakeQuiz = () => {
           <Card variant="glass">
             <CardContent className="p-8 text-center">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center mx-auto mb-6">
-                <span className="text-3xl font-bold text-primary-foreground">Q</span>
+                <span className="text-3xl font-bold text-primary-foreground">
+                  Q
+                </span>
               </div>
               <h1 className="text-2xl font-bold mb-2">{quiz.title}</h1>
               <p className="text-muted-foreground mb-6">
-                {quiz.description || `This quiz contains ${questions.length} questions.`}
+                {quiz.description ||
+                  `This quiz contains ${questions.length} questions.`}
               </p>
 
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="p-4 rounded-xl bg-secondary/50 border border-border">
-                  <div className="text-2xl font-bold text-primary">{questions.length}</div>
+                  <div className="text-2xl font-bold text-primary">
+                    {questions.length}
+                  </div>
                   <div className="text-sm text-muted-foreground">Questions</div>
                 </div>
                 <div className="p-4 rounded-xl bg-secondary/50 border border-border">
-                  <div className="text-2xl font-bold text-primary">{formattedTime}</div>
-                  <div className="text-sm text-muted-foreground">Time Limit</div>
+                  <div className="text-2xl font-bold text-primary">
+                    {formattedTime}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Time Limit
+                  </div>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 p-4 rounded-xl bg-warning/10 border border-warning/30 mb-6">
                 <AlertTriangle className="h-5 w-5 text-warning flex-shrink-0" />
                 <p className="text-sm text-left">
-                  Security monitoring is enabled. Avoid switching tabs or the quiz may be auto-submitted.
+                  Security monitoring is enabled. Avoid switching tabs or the
+                  quiz may be auto-submitted.
                 </p>
               </div>
 
-              <Button variant="hero" size="xl" className="w-full" onClick={handleStartQuiz}>
+              <Button
+                variant="hero"
+                size="xl"
+                className="w-full"
+                onClick={handleStartQuiz}
+              >
                 Start Quiz
               </Button>
 
@@ -300,7 +375,8 @@ const TakeQuiz = () => {
               </div>
               <h2 className="text-3xl font-bold mb-4">Quiz Completed!</h2>
               <p className="text-muted-foreground mb-8">
-                Thank you for attempting the quiz. Your responses have been recorded successfully.
+                Thank you for attempting the quiz. Your responses have been
+                recorded successfully.
               </p>
 
               <Button variant="hero" size="lg" asChild className="w-full">
@@ -321,9 +397,13 @@ const TakeQuiz = () => {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-                <span className="text-primary-foreground font-bold text-sm">Q</span>
+                <span className="text-primary-foreground font-bold text-sm">
+                  Q
+                </span>
               </div>
-              <span className="font-bold text-lg hidden sm:inline">{quiz?.title || 'Quiz'}</span>
+              <span className="font-bold text-lg hidden sm:inline">
+                {quiz?.title || "Quiz"}
+              </span>
             </div>
           </div>
 
@@ -353,9 +433,8 @@ const TakeQuiz = () => {
                 <QuestionCard
                   key={currentQuestion}
                   questionNumber={currentQuestion + 1}
-                  question={questions[currentQuestion].question_text}
-                  options={questions[currentQuestion].options as string[]}
-                  selectedAnswer={answers.get(currentQuestion) ?? null}
+                  question={questions[currentQuestion]}
+                  selectedAnswers={answers.get(currentQuestion) ?? []}
                   onSelectAnswer={handleSelectAnswer}
                 />
               </AnimatePresence>
@@ -364,7 +443,9 @@ const TakeQuiz = () => {
               <div className="flex items-center justify-between mt-8 pt-6 border-t border-border">
                 <Button
                   variant="outline"
-                  onClick={() => setCurrentQuestion((prev) => Math.max(0, prev - 1))}
+                  onClick={() =>
+                    setCurrentQuestion((prev) => Math.max(0, prev - 1))
+                  }
                   disabled={currentQuestion === 0}
                 >
                   <ArrowLeft className="h-4 w-4 mr-2" />
@@ -384,7 +465,7 @@ const TakeQuiz = () => {
                   <Button
                     onClick={() =>
                       setCurrentQuestion((prev) =>
-                        Math.min(questions.length - 1, prev + 1)
+                        Math.min(questions.length - 1, prev + 1),
                       )
                     }
                   >
@@ -406,7 +487,9 @@ const TakeQuiz = () => {
             />
 
             <Card variant="glow" className="p-4">
-              <h3 className="text-sm font-semibold text-muted-foreground mb-3">Progress</h3>
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3">
+                Progress
+              </h3>
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
                   <motion.div

@@ -61,7 +61,7 @@ export const emailService = {
             ${
               isPass
                 ? '<p style="color: #10b981; font-weight: bold;">Congratulations, you have passed the quiz!</p>'
-                : '<p style="color: #ef4444; font-weight: bold;">We encourage you to review the material and try again if possible.</p>'
+                : '<p style="color: #ef4444; font-weight: bold;">We encourage you to revise the topics and try again if possible.</p>'
             }
           </div>
 

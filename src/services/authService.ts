@@ -133,22 +133,28 @@ export const authService = {
     if (error) console.error("Error updating name:", error);
   },
 
-  // Create Participant (Admin only)
-  async createParticipant(email: string): Promise<{ password: string } | null> {
+  async createParticipant(
+    email: string,
+    creatorId: string,
+  ): Promise<{ password: string } | null> {
     // Generate a random 8-character password
     const password = Math.random().toString(36).slice(-8);
 
-    const { error } = await supabase.from("users").insert([
-      {
-        email,
-        password,
-        role: "participant",
-        is_used: false,
-      },
-    ]);
+    const { data: user, error } = await supabase
+      .from("users")
+      .insert([
+        {
+          email,
+          password,
+          role: "participant",
+          is_used: false,
+        },
+      ])
+      .select()
+      .single();
 
-    if (error) {
-      console.error("Error creating participant:", error);
+    if (error || !user) {
+      console.error("Error creating participant user:", error);
       return null;
     }
 
@@ -157,11 +163,16 @@ export const authService = {
       {
         email,
         name: email.split("@")[0], // Default name from email
+        user_id: user.id,
+        creator_id: creatorId,
       },
     ]);
 
     if (pError) {
-      console.log("Participant record creation note:", pError);
+      console.error("Error creating participant record:", pError);
+      // Clean up the user that was created
+      await supabase.from("users").delete().eq("id", user.id);
+      throw pError;
     }
 
     return { password };
@@ -170,33 +181,18 @@ export const authService = {
   // Create Multiple Participants
   async createParticipantsBulk(
     emails: string[],
+    creatorId: string,
   ): Promise<{ email: string; password: string }[]> {
     const results: { email: string; password: string }[] = [];
 
     for (const email of emails) {
-      // Generate a random 8-character password
-      const password = Math.random().toString(36).slice(-8);
-
-      const { error } = await supabase.from("users").insert([
-        {
-          email,
-          password,
-          role: "participant",
-          is_used: false,
-        },
-      ]);
-
-      if (!error) {
-        // Also create a participant record for linking
-        await supabase.from("participants").insert([
-          {
-            email,
-            name: email.split("@")[0], // Default name from email
-          },
-        ]);
-        results.push({ email, password });
-      } else {
-        console.error(`Error creating participant ${email}:`, error);
+      try {
+        const result = await this.createParticipant(email, creatorId);
+        if (result) {
+          results.push({ email, password: result.password });
+        }
+      } catch (error) {
+        console.error(`Failed to create participant ${email}:`, error);
       }
     }
 
@@ -206,6 +202,7 @@ export const authService = {
   // Create Participants from CSV
   async createParticipantsFromCSV(
     file: File,
+    creatorId: string,
   ): Promise<{ email: string; password: string }[]> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -215,18 +212,13 @@ export const authService = {
 
         const lines = text.split("\n");
         const emails: string[] = [];
-
-        // Skip header if present (assume header if first line has 'email' or 'Email')
         const startIdx = lines[0].toLowerCase().includes("email") ? 1 : 0;
 
         for (let i = startIdx; i < lines.length; i++) {
           const line = lines[i].trim();
           if (!line) continue;
-
-          // Assume first column is email
           const parts = line.split(",");
           const email = parts[0].trim();
-
           if (email && email.includes("@")) {
             emails.push(email);
           }
@@ -235,7 +227,7 @@ export const authService = {
         if (emails.length === 0) return reject("No valid emails found");
 
         try {
-          const results = await this.createParticipantsBulk(emails);
+          const results = await this.createParticipantsBulk(emails, creatorId);
           resolve(results);
         } catch (err) {
           reject(err);
@@ -248,38 +240,33 @@ export const authService = {
 
   // Delete Participant Credential
   async deleteParticipant(email: string) {
-    // First, delete from the 'participants' table
-    const { error: pError } = await supabase
-      .from("participants")
-      .delete()
-      .eq("email", email);
-
-    if (pError) {
-      console.warn(
-        "Could not delete from participants table, it might not exist. Continuing deletion from users.",
-        pError,
-      );
-    }
-
-    // Then, delete from the 'users' table
-    const { error: uError } = await supabase
+    const { data: user } = await supabase
       .from("users")
-      .delete()
+      .select("id")
       .eq("email", email)
-      .eq("role", "participant");
+      .single();
 
-    if (uError) throw uError;
+    if (user) {
+      await supabase.from("participants").delete().eq("user_id", user.id);
+      await supabase.from("users").delete().eq("id", user.id);
+    }
   },
 
   // Get All Participants (Users with role participant)
-  async getParticipants() {
-    const { data, error } = await supabase
-      .from("users")
+  async getParticipants(userId: string, userRole: string) {
+    let query = supabase
+      .from("participants")
       .select("*")
-      .eq("role", "participant")
       .order("created_at", { ascending: false });
 
+    if (userRole === "faculty") {
+      query = query.eq("creator_id", userId);
+    }
+
+    const { data, error } = await query;
+
     if (error) throw error;
+
     return data;
   },
 
@@ -304,6 +291,18 @@ export const authService = {
       .select("*")
       .eq("role", "admin")
       .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get user by email
+  async getUserByEmail(email: string) {
+    const { data, error } = await supabase
+      .from("users")
+      .select("*, password")
+      .eq("email", email)
+      .single();
 
     if (error) throw error;
     return data;

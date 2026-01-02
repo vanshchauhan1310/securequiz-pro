@@ -2,7 +2,7 @@
 description: Deploy the Supabase Edge Function for sending emails
 ---
 
-This workflow deploys the `send-email` Edge Function to your Supabase project. This is required to fix the CORS error when sending emails.
+This workflow deploys the `quiz-email` Edge Function to your Supabase project. This is required to fix the CORS error when sending emails.
 
 1.  **Login to Supabase CLI** (if not already logged in):
     ```bash
@@ -25,7 +25,7 @@ This workflow deploys the `send-email` Edge Function to your Supabase project. T
 
 4.  **Deploy the Function**:
     ```bash
-    npx supabase functions deploy send-email
+    npx supabase functions deploy quiz-email
     ```
 
 5.  **Verify**:

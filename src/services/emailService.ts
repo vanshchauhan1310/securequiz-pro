@@ -4,7 +4,7 @@ import { toast } from "sonner";
 export const emailService = {
   async sendEmail(to: string, subject: string, html: string) {
     try {
-      const { data, error } = await supabase.functions.invoke("send-email", {
+      const { data, error } = await supabase.functions.invoke("quiz-email", {
         body: { to, subject, html },
       });
 
@@ -22,7 +22,7 @@ export const emailService = {
     } catch (error) {
       console.error("Error sending email:", error);
       toast.error(
-        "Failed to send email. Ensure the 'send-email' function is deployed.",
+        "Failed to send email. Ensure the 'quiz-email' function is deployed.",
       );
       throw error;
     }
@@ -58,11 +58,10 @@ export const emailService = {
           </div>
 
           <div style="text-align: center; margin-bottom: 30px;">
-            ${
-              isPass
-                ? '<p style="color: #10b981; font-weight: bold;">Congratulations, you have passed the quiz!</p>'
-                : '<p style="color: #ef4444; font-weight: bold;">We encourage you to revise the topics and try again if possible.</p>'
-            }
+            ${isPass
+        ? '<p style="color: #10b981; font-weight: bold;">Congratulations, you have passed the quiz!</p>'
+        : '<p style="color: #ef4444; font-weight: bold;">We encourage you to revise the topics and try again if possible.</p>'
+      }
           </div>
 
           <p style="margin-top: 30px;">If you have any questions about your results, please contact the quiz administrator.</p>

@@ -70,6 +70,6 @@ To send emails (results, credentials), you must deploy the Supabase Edge Functio
     ```
 4.  **Deploy Function**:
     ```bash
-    npx supabase functions deploy send-email
+    npx supabase functions deploy quiz-email
     ```
 

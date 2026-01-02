@@ -17,6 +17,10 @@ export const useTimer = (options: UseTimerOptions) => {
   }, [onTimeUp]);
 
   useEffect(() => {
+    setTimeLeft(initialTime);
+  }, [initialTime]);
+
+  useEffect(() => {
     if (!isRunning || timeLeft <= 0) return;
 
     const interval = setInterval(() => {

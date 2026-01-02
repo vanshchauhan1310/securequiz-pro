@@ -17,7 +17,7 @@ import {
   CheckCircle2,
   Loader2,
 } from "lucide-react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { quizService } from "@/services/quizService";
@@ -28,6 +28,7 @@ import { supabase } from "@/lib/supabase";
 const TakeQuiz = () => {
   const [searchParams] = useSearchParams();
   const quizId = searchParams.get("id") || ""; // Get quiz ID from URL parameter
+  const navigate = useNavigate();
 
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState<Map<number, number[]>>(new Map());
@@ -43,6 +44,14 @@ const TakeQuiz = () => {
     queryFn: () => quizService.getQuizById(quizId),
     enabled: !!quizId,
   });
+
+  // Check if quiz is active
+  useEffect(() => {
+    if (quiz && quiz.status !== "active") {
+      toast.error("This quiz is currently not active.");
+      navigate("/");
+    }
+  }, [quiz, navigate]);
 
   // Fetch questions for the quiz
   const { data: questions, isLoading: questionsLoading } = useQuery({
@@ -289,12 +298,18 @@ const TakeQuiz = () => {
   }
 
   if (!quizStarted) {
-    const timeMinutes = Math.floor((quiz.time_limit || 600) / 60);
+    const timeHours = Math.floor((quiz.time_limit || 600) / 3600);
+    const timeMinutes = Math.floor(((quiz.time_limit || 600) % 3600) / 60);
     const timeSeconds = (quiz.time_limit || 600) % 60;
+
     const formattedTime =
-      timeSeconds > 0
-        ? `${timeMinutes}:${timeSeconds.toString().padStart(2, "0")}`
-        : `${timeMinutes}:00`;
+      timeHours > 0
+        ? `${timeHours.toString().padStart(2, "0")}:${timeMinutes
+          .toString()
+          .padStart(2, "0")}:${timeSeconds.toString().padStart(2, "0")}`
+        : `${timeMinutes.toString().padStart(2, "0")}:${timeSeconds
+          .toString()
+          .padStart(2, "0")}`;
 
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">

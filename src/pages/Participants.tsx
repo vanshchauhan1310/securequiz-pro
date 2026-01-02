@@ -155,6 +155,8 @@ const Participants = () => {
         participant.email,
         participant.password,
       );
+      await authService.updateParticipantEmailStatus(participant.email, true);
+      queryClient.invalidateQueries({ queryKey: ["participants"] });
       toast.success(`Credentials sent to ${participant.email}`);
     } catch (error) {
       console.error("Send email error:", error);
@@ -439,6 +441,7 @@ const Participants = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Email</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Created At</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -448,6 +451,17 @@ const Participants = () => {
                     <TableRow key={participant.id}>
                       <TableCell className="font-medium">
                         {participant.email}
+                      </TableCell>
+                      <TableCell>
+                        {participant.email_sent ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            Sent
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                            Pending
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>
                         {format(

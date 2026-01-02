@@ -318,4 +318,14 @@ export const authService = {
 
     if (error) throw error;
   },
+
+  // Update Participant Email Status
+  async updateParticipantEmailStatus(email: string, status: boolean) {
+    const { error } = await supabase
+      .from("participants")
+      .update({ email_sent: status })
+      .eq("email", email);
+
+    if (error) throw error;
+  },
 };

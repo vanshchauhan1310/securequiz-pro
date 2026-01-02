@@ -93,7 +93,7 @@ export const emailService = {
                     </div>
 
                     <div style="text-align: center; margin-bottom: 30px;">
-                        <a href="https://quizify.edcatalyst.in/login" style="background-color: #4f46e5; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">Login to Start Quiz</a>
+                        <a href="https://quizify.edcatalyst.in/" style="background-color: #4f46e5; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">Login to Start Quiz</a>
                     </div>
 
                     <hr style="border: 0; border-top: 1px solid #e0e0e0; margin: 30px 0;">
